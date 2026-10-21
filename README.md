@@ -1,4 +1,4 @@
-# PR Reviewer (Day 1 starter)
+# PR Reviewer
 
 Webhook receiver + GitHub App auth + queue + worker that fetches the PR diff.
 
