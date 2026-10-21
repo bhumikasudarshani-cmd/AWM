@@ -23,6 +23,8 @@ async def github_webhook(
 
     # 1. Authenticity
     if not verify_signature(settings.github_webhook_secret, body, x_hub_signature_256):
+        log.warning("bad_signature", secret_len=len(settings.github_webhook_secret),
+            body_len=len(body), has_header=bool(x_hub_signature_256))
         raise HTTPException(status_code=401, detail="invalid signature")
 
     # 2. Idempotency: same delivery id is processed only once (24h window)
