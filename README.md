@@ -2,7 +2,7 @@
 
 **Verified, low-noise, measurable AI code review for GitHub pull requests.**
 
-AWM Automated Workflow Monitor is a self-hostable GitHub App that analyzes pull request diffs for bugs, security vulnerabilities, and maintainability issues. Unlike general-purpose AI reviewers, it treats every finding as a claim that must be backed by evidence, filters out noise using team feedback, and reports its own accuracy on a labeled benchmark.
+AWM (Automated Workflow Monitor)is a self-hostable GitHub App that analyzes pull request diffs for bugs, security vulnerabilities, and maintainability issues. Unlike general-purpose AI reviewers, it treats every finding as a claim that must be backed by evidence, filters out noise using team feedback, and reports its own accuracy on a labeled benchmark.
 
 ---
 
