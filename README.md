@@ -14,7 +14,7 @@ PR Reviewer is designed around a single principle:
 
 > Every comment should come with evidence, noise should shrink as the team gives feedback, and accuracy should be measurable.
 
-## Key Capabilities
+## Key Capabilities :
 
 - **Multi-stage review pipeline.** Specialized reviewers for security, correctness, and maintainability run independently and in parallel.
 - **Evidence-backed findings.** Static analysis results (for example Semgrep, gitleaks, and linters) are attached to candidate findings, and a dedicated verifier stage confirms or rejects each one before anything is posted.
