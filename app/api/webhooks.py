@@ -22,13 +22,13 @@ async def github_webhook(
     body = await request.body()
 
     # 1. Authenticity
-        # 1. Authenticity
-    if not verify_signature(settings.github_webhook_secret, body, x_hub_signature_256):
-        print(
-            f"bad_signature secret_len={len(settings.github_webhook_secret)} "
-            f"body_len={len(body)} has_header={bool(x_hub_signature_256)} "
-            f"event={x_github_event}",
-            flush=True,
+        if not verify_signature(settings.github_webhook_secret, body, x_hub_signature_256):
+        log.warning(
+            "bad_signature",
+            secret_len=len(settings.github_webhook_secret),
+            body_len=len(body),
+            has_header=bool(x_hub_signature_256),
+            event=x_github_event,
         )
         raise HTTPException(status_code=401, detail="invalid signature")
 
