@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     github_webhook_secret: str = ""
     redis_url: str = "redis://localhost:6379"
     auth_mode: str = "mock"
+    dump_fixtures: bool = False  # dev only: save raw PR file lists to ./fixtures_dump
 
     @property
     def private_key_pem(self) -> str:
