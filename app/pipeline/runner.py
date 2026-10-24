@@ -39,7 +39,7 @@ def _sort_key(f: Finding) -> tuple:
 async def _run_stage(stage: Stage, ctx: ReviewContext, timeout: float) -> StageResult:
     started = time.perf_counter()
     try:
-        findings = await asyncio.wait_for(stage.run(ctx), timeout=timeout)
+        findings = await asyncio.wait_for(stage.run(ctx), timeout=getattr(stage, "timeout", None) or timeout)
         error = None
     except Exception as exc:  # one broken stage must not sink the whole review
         findings, error = [], f"{type(exc).__name__}: {exc}"

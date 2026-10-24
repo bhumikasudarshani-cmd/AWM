@@ -9,7 +9,7 @@ from app.pipeline.models import SEVERITY_ORDER, Finding, ReviewContext
 
 MAX_BODY = 60000
 BOT_NAME = "AWM"
-STAGE_LABELS = {"rules": "security and debugging rules"}
+STAGE_LABELS = {"rules": "security and debugging rules", "llm-security": "AI security review"}
 SEVERITY_LABEL = {"low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"}
 
 
@@ -67,7 +67,11 @@ def render_summary(
         f"I looked at your changes in `{ctx.head_sha[:7]}`: **{reviewed}** file(s), **{changed}** changed line(s).",
         "",
     ]
-
+    partial = ctx.coverage.partial
+    if partial:
+        lines += ["", f"<details><summary>Only partly reviewed: {len(partial)} file(s)</summary>", ""]
+        lines += [f"- `{s.path}`: {s.reason}" for s in partial[:15]]
+        lines += ["", "</details>"]
     if all_findings:
         counts = {s: sum(1 for f in all_findings if f.severity == s) for s in SEVERITY_ORDER}
         breakdown = ", ".join(f"{counts[s]} {s}" for s in ("critical", "high", "medium", "low") if counts[s])

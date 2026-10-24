@@ -23,6 +23,7 @@ class SkippedFile:
 class Coverage:
     reviewed: list[str] = field(default_factory=list)
     skipped: list[SkippedFile] = field(default_factory=list)
+    partial: list[SkippedFile] = field(default_factory=list)  # reviewed by some checks, not all
 
     def skipped_by_reason(self) -> dict[str, int]:
         return dict(Counter(s.reason for s in self.skipped))
