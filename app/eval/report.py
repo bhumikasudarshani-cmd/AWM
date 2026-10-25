@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.eval.score import CaseScore
 
@@ -14,6 +14,7 @@ class CaseResult:
     duration_ms: int
     prompt_tokens: int
     completion_tokens: int
+    details: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -76,3 +77,13 @@ def to_markdown(summaries: dict[str, Summary]) -> str:
             f"| {s.duration_ms / 1000:.1f} | {s.prompt_tokens}/{s.completion_tokens} |"
         )
     return "\n".join(lines)
+
+
+def format_details(results_by_config: dict[str, list[CaseResult]]) -> str:
+    """List every case that was not perfect, per configuration, and say what went wrong."""
+    blocks: list[str] = []
+    for name, results in results_by_config.items():
+        lines = [f"  {r.case_id}: {d}" for r in results for d in r.details]
+        if lines:
+            blocks.append(f"[{name}]\n" + "\n".join(lines))
+    return "\n\n".join(blocks) if blocks else "All cases perfect."

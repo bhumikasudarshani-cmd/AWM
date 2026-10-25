@@ -65,3 +65,20 @@ def test_markdown_table_has_one_row_per_config():
     s = summarize([result("a", False, CaseScore(1, 0, 0, 0, 1))])
     table = to_markdown({"rules": s, "llm": s})
     assert table.count("\n") >= 3 and "| llm |" in table and "Precision" in table
+
+
+# ---------------- diagnosis: which expectations were missed, which comments were wrong ----------------
+from app.eval.score import diagnose_case  # noqa: E402
+
+
+def test_diagnosis_lists_misses_unexpected_comments_and_duplicates():
+    d = diagnose_case([Expected(3, "security"), Expected(8, "security")],
+                      [f(3, title="A"), f(3, title="B"), f(20, title="C")])
+    assert [e.line for e in d.missed] == [8]
+    assert [x.title for x in d.unexpected] == ["C"]
+    assert [x.title for x in d.duplicates] == ["B"]
+
+
+def test_diagnosis_of_a_perfect_case_is_empty():
+    d = diagnose_case([Expected(3, "security")], [f(3)])
+    assert d.missed == [] and d.unexpected == [] and d.duplicates == []

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from app.eval.cases import Case, case_context
 from app.eval.provider import CachingProvider
 from app.eval.report import CaseResult, Summary, summarize
-from app.eval.score import score_case
+from app.eval.score import diagnose_case, score_case
 from app.pipeline.base import Stage
 from app.pipeline.models import ReviewConfig
 from app.pipeline.runner import run_pipeline, select_findings
@@ -31,11 +31,19 @@ async def evaluate(
         piped = await run_pipeline(ctx, stage_factory())
         selected = select_findings(piped.findings, ctx.config).selected
         errors = [r.error for r in piped.stage_results if r.error]
+        diag = diagnose_case(case.expected, selected)
+        details = (
+            [f"missed line {e.line} ({e.category})" for e in diag.missed]
+            + [f"unexpected line {f.line_start} ({f.category}) {f.title!r} [{f.source_stage}]" for f in diag.unexpected]
+            + [f"duplicate on line {f.line_start} ({f.category}) {f.title!r} [{f.source_stage}]" for f in diag.duplicates]
+            + [f"stage error: {e}" for e in errors]
+        )
         results.append(CaseResult(
             case_id=case.id, is_clean=case.is_clean, score=score_case(case.expected, selected),
             error="; ".join(errors) or None, duration_ms=int((time.perf_counter() - started) * 1000),
             prompt_tokens=(provider.usage.prompt_tokens - pt0) if provider else 0,
             completion_tokens=(provider.usage.completion_tokens - ct0) if provider else 0,
+            details=details,
         ))
     return results
 
@@ -67,3 +75,14 @@ async def run_configs(
         results = await evaluate(cases, make_stage_factory(name, provider, **llm_kwargs), provider=provider)
         out[name] = summarize(results)
     return out
+
+
+async def run_configs_detailed(
+    cases: list[Case], names: list[str], provider: CachingProvider | None, **llm_kwargs
+) -> tuple[dict[str, Summary], dict[str, list[CaseResult]]]:
+    summaries: dict[str, Summary] = {}
+    results: dict[str, list[CaseResult]] = {}
+    for name in names:
+        results[name] = await evaluate(cases, make_stage_factory(name, provider, **llm_kwargs), provider=provider)
+        summaries[name] = summarize(results[name])
+    return summaries, results

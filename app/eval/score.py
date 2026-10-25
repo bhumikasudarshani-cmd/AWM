@@ -6,6 +6,14 @@ from app.eval.cases import Expected
 from app.pipeline.models import Finding
 
 
+@dataclass(slots=True)
+class Diagnosis:
+    missed: list[Expected]
+    unexpected: list[Finding]  # comments that match no expectation
+    duplicates: list[Finding]  # extra comments on an already matched issue
+    matched: int = 0
+
+
 @dataclass(frozen=True, slots=True)
 class CaseScore:
     tp: int  # expected issues that got a comment on the right line and category
@@ -15,18 +23,25 @@ class CaseScore:
     comments: int  # everything the author would see
 
 
-def score_case(expected: list[Expected], findings: list[Finding]) -> CaseScore:
+def diagnose_case(expected: list[Expected], findings: list[Finding]) -> Diagnosis:
     remaining = list(expected)
     matched: set[tuple[int, str]] = set()
-    tp = fp = dup = 0
+    d = Diagnosis(missed=[], unexpected=[], duplicates=[])
     for f in findings:
         hit = next((e for e in remaining if e.line == f.line_start and e.category == f.category), None)
         if hit is not None:
             remaining.remove(hit)
             matched.add((hit.line, hit.category))
-            tp += 1
+            d.matched += 1
         elif (f.line_start, f.category) in matched:
-            dup += 1
+            d.duplicates.append(f)
         else:
-            fp += 1
-    return CaseScore(tp=tp, fp=fp, fn=len(remaining), duplicates=dup, comments=len(findings))
+            d.unexpected.append(f)
+    d.missed = remaining
+    return d
+
+
+def score_case(expected: list[Expected], findings: list[Finding]) -> CaseScore:
+    d = diagnose_case(expected, findings)
+    return CaseScore(tp=d.matched, fp=len(d.unexpected), fn=len(d.missed),
+                     duplicates=len(d.duplicates), comments=len(findings))

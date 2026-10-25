@@ -64,3 +64,29 @@ def test_replay_gives_identical_numbers_without_calling_the_model(tmp_path):
 def test_rules_only_needs_no_provider():
     summaries = run(run_configs([BAD], ["rules"], None))
     assert summaries["rules"].tp == 1
+
+
+# ---------------- detail report ----------------
+from app.eval.report import format_details  # noqa: E402
+from app.eval.runner import run_configs_detailed  # noqa: E402
+
+
+def test_details_explain_every_imperfect_case_and_skip_perfect_ones(tmp_path):
+    provider = CachingProvider(FakeProvider([llm_reply(1)], model="fake"), tmp_path, mode="record")  # wrong line
+    summaries, results = run(run_configs_detailed([BAD, CLEAN], ["llm"], provider))
+    assert summaries["llm"].fp == 1 and summaries["llm"].fn == 1
+    text = format_details(results)
+    assert "bad: missed line 2 (security)" in text
+    assert "bad: unexpected line 1 (security) 'Shell injection' [llm-security]" in text
+    assert "clean" not in text  # perfect cases are not listed
+
+
+def test_details_mark_duplicates_and_noisy_clean_files():
+    results = {"rules": run(evaluate([COMMENT], lambda: [RulesStage()]))}
+    text = format_details(results)
+    assert "comment: unexpected line 1" in text and "[rules]" in text
+
+
+def test_nothing_to_report_when_every_case_is_perfect():
+    results = {"rules": run(evaluate([BAD, CLEAN], lambda: [RulesStage()]))}
+    assert format_details(results) == "All cases perfect."
