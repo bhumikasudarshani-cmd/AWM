@@ -32,6 +32,17 @@ docker compose run --rm -v "${PWD}\tests:/srv/tests" api python -m pytest -q
 
 One test (`test_cross_check_with_unidiff`) is skipped unless `unidiff` is installed (`requirements-dev.txt`).
 
+## Tests are hermetic
+
+A test run must give the same result on every machine and must cost nothing.
+
+- `tests/conftest.py` resets the model settings (`LLM_*`, `DUMP_FIXTURES`) for every test, so a developer's `.env`
+  can never switch the paid model on. `docker compose run` loads `.env`, so this matters.
+- It also blocks real network transports: a test that tries to reach the internet fails with
+  "real network call attempted in a test". `httpx.MockTransport` still works.
+- `tests/test_hermetic.py` checks both guards.
+- Real model calls happen only in the evaluation (`python -m app.eval.run`) and in the end-to-end run, never in `pytest`.
+
 ## TDD loop
 
 1. Write the test. Run it. It must fail, and for the right reason (not a typo).
