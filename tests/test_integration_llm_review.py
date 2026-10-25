@@ -23,7 +23,7 @@ def use_stages(monkeypatch, provider, **kw):
     monkeypatch.setattr(tasks, "default_stages", lambda: [RulesStage(), LLMSecurityStage(provider, **kw)])
 
 
-def test_ai_finding_is_posted_inline_next_to_the_rule_findings(env, monkeypatch):
+def test_ai_and_rule_findings_on_the_same_line_become_one_comment_with_both_sources(env, monkeypatch):
     redis, queue, client, install = env
     fake = FakeGitHub([demo_file()])
     install(fake)
@@ -31,11 +31,12 @@ def test_ai_finding_is_posted_inline_next_to_the_rule_findings(env, monkeypatch)
 
     result = run_worker(redis, webhook_job(client, queue))
 
-    assert result["status"] == "posted" and result["inline"] == 5
+    assert result["status"] == "posted" and result["inline"] == 4  # not 5: line 7 is one comment
     (review,) = fake.reviews
-    on_7 = [c["body"] for c in review["comments"] if c["line"] == 7]
-    assert len(on_7) == 2 and any("Unsafe command construction" in b for b in on_7) and any("shell=True" in b for b in on_7)
-    assert "AI security review" in review["body"]
+    (on_7,) = [c["body"] for c in review["comments"] if c["line"] == 7]
+    assert "Unsafe command construction" in on_7 and "High" in on_7
+    assert "llm:security-reviewer" in on_7 and "rules:shell-true" in on_7
+    assert "AI security review" in review["body"] and "**4** thing(s)" in review["body"]
 
 
 @pytest.mark.parametrize("failure", ["not json at all", LLMError("model server down")])

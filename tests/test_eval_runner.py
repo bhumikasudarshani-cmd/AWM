@@ -40,7 +40,9 @@ def test_run_configs_compares_rules_llm_and_both(tmp_path):
     summaries = run(run_configs([BAD, CLEAN], ["rules", "llm", "rules+llm"], provider))
     assert set(summaries) == {"rules", "llm", "rules+llm"}
     assert summaries["rules"].tp == 1 and summaries["llm"].tp == 1
-    assert summaries["rules+llm"].tp == 1 and summaries["rules+llm"].duplicates == 1  # both flagged line 2
+    # both stages flagged line 2: that is one issue, so one comment, not a duplicate
+    assert summaries["rules+llm"].tp == 1 and summaries["rules+llm"].duplicates == 0
+    assert summaries["rules+llm"].comments == 1
     assert summaries["llm"].prompt_tokens > 0
 
 

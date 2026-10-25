@@ -42,8 +42,14 @@ class Finding(BaseModel):
 
     @property
     def fingerprint(self) -> str:
-        basis = f"{self.file}|{self.category}|{self.title}|{self.anchor_text or self.line_start}"
+        # The title is left out on purpose: a model words the same issue differently on every run.
+        basis = f"{self.file}|{self.category}|{self.anchor_text or self.line_start}"
         return hashlib.sha1(basis.encode()).hexdigest()[:16]
+
+    @property
+    def tools(self) -> set[str]:
+        """Which kinds of checks (rules, llm, ...) reported this issue."""
+        return {e.tool for e in self.evidence}
 
 
 @dataclass(slots=True)
