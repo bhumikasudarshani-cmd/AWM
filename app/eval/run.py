@@ -15,7 +15,7 @@ from pathlib import Path
 from app.config import settings
 from app.eval.cases import load_cases
 from app.eval.provider import CachingProvider
-from app.eval.report import format_details, to_markdown
+from app.eval.report import format_details, format_sweep, to_markdown
 from app.eval.runner import CONFIG_NAMES, run_configs_detailed
 
 HERE = Path(__file__).resolve().parent
@@ -27,6 +27,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--mode", default="replay", choices=["live", "record", "replay"],
                    help="replay uses saved model answers (free, offline); record saves new ones")
     p.add_argument("--detail", action="store_true", help="list every case that was not perfect")
+    p.add_argument("--model", default=None, help="model name to use (replay needs the one the answers were recorded with)")
     p.add_argument("--cases", default=str(HERE / "cases"))
     p.add_argument("--cache", default=str(HERE / "recorded"))
     p.add_argument("--out", default=str(HERE / "results"))
@@ -38,13 +39,14 @@ async def main_async(args: argparse.Namespace) -> None:
     needs_model = any("llm" in n for n in names)
     provider = None
     inner = None
+    model_name = args.model or settings.llm_model
     if needs_model:
         if args.mode != "replay":
             from app.llm.openai_compat import OpenAICompatProvider
 
-            inner = OpenAICompatProvider(settings.llm_base_url, settings.llm_model, settings.llm_api_key,
+            inner = OpenAICompatProvider(settings.llm_base_url, model_name, settings.llm_api_key,
                                          timeout=settings.llm_timeout)
-        provider = CachingProvider(inner, args.cache, mode=args.mode, model=settings.llm_model)
+        provider = CachingProvider(inner, args.cache, mode=args.mode, model=model_name)
 
     cases = load_cases(args.cases)
     try:
@@ -60,6 +62,11 @@ async def main_async(args: argparse.Namespace) -> None:
     if args.detail:
         print("\nCases that were not perfect:\n")
         print(format_details(results))
+        print("\n" + format_sweep(results))
+        for name, s in summaries.items():
+            if s.mean_conf_correct is not None or s.mean_conf_wrong is not None:
+                fmt = lambda v: "-" if v is None else f"{v:.2f}"  # noqa: E731
+                print(f"  {name}: average confidence of correct comments {fmt(s.mean_conf_correct)}, of wrong comments {fmt(s.mean_conf_wrong)}")
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

@@ -83,3 +83,36 @@ def test_diagnosis_lists_misses_unexpected_comments_and_duplicates():
 def test_diagnosis_of_a_perfect_case_is_empty():
     d = diagnose_case([Expected(3, "security")], [f(3)])
     assert d.missed == [] and d.unexpected == [] and d.duplicates == []
+
+
+# ---------------- confidence calibration ----------------
+from app.eval.report import confidence_sweep, format_sweep  # noqa: E402
+
+
+def test_diagnosis_keeps_the_matched_findings_so_their_confidence_can_be_studied():
+    d = diagnose_case([Expected(3, "security")], [f(3), f(9)])
+    assert [x.line_start for x in d.matched_findings] == [3] and [x.line_start for x in d.unexpected] == [9]
+
+
+def marked(case_id, marks, tp, fn):
+    return CaseResult(case_id, False, CaseScore(tp, len(marks) - tp, fn, 0, len(marks)), None, 0, 0, 0, marks=marks)
+
+
+def test_sweep_shows_what_a_higher_confidence_threshold_would_do():
+    results = [marked("a", [(0.9, True), (0.8, True), (0.6, False), (0.55, False)], tp=2, fn=1)]
+    rows = {t: (p, r, n) for t, p, r, n in confidence_sweep(results, thresholds=(0.5, 0.7, 0.95))}
+    assert rows[0.5] == (0.5, pytest.approx(2 / 3), 4)
+    assert rows[0.7] == (1.0, pytest.approx(2 / 3), 2)
+    assert rows[0.95] == (None, 0.0, 0)
+
+
+def test_sweep_text_lists_each_config_and_skips_configs_without_comments():
+    results = {"llm": [marked("a", [(0.9, True)], tp=1, fn=0)], "rules": [marked("b", [], tp=0, fn=1)]}
+    text = format_sweep(results)
+    assert "llm" in text and ">=0.9" in text and "rules" not in text
+
+
+def test_summary_reports_average_confidence_of_correct_and_wrong_comments():
+    s = summarize([marked("a", [(0.9, True), (0.8, True), (0.6, False)], tp=2, fn=0)])
+    assert s.mean_conf_correct == pytest.approx(0.85) and s.mean_conf_wrong == pytest.approx(0.6)
+    assert summarize([marked("b", [], tp=0, fn=0)]).mean_conf_correct is None

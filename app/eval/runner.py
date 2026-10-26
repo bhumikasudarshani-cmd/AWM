@@ -32,6 +32,7 @@ async def evaluate(
         selected = select_findings(piped.findings, ctx.config).selected
         errors = [r.error for r in piped.stage_results if r.error]
         diag = diagnose_case(case.expected, selected)
+        marks = [(f.confidence, True) for f in diag.matched_findings] + [(f.confidence, False) for f in diag.unexpected]
         details = (
             [f"missed line {e.line} ({e.category})" for e in diag.missed]
             + [f"unexpected line {f.line_start} ({f.category}) {f.title!r} [{f.source_stage}]" for f in diag.unexpected]
@@ -43,7 +44,7 @@ async def evaluate(
             error="; ".join(errors) or None, duration_ms=int((time.perf_counter() - started) * 1000),
             prompt_tokens=(provider.usage.prompt_tokens - pt0) if provider else 0,
             completion_tokens=(provider.usage.completion_tokens - ct0) if provider else 0,
-            details=details, held_back=len(piped.suppressed),
+            details=details, held_back=len(piped.suppressed), marks=marks,
         ))
     return results
 

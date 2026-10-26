@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.eval.cases import Expected
 from app.pipeline.models import Finding
@@ -12,6 +12,7 @@ class Diagnosis:
     unexpected: list[Finding]  # comments that match no expectation
     duplicates: list[Finding]  # extra comments on an already matched issue
     matched: int = 0
+    matched_findings: list[Finding] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +34,7 @@ def diagnose_case(expected: list[Expected], findings: list[Finding]) -> Diagnosi
             remaining.remove(hit)
             matched.add((hit.line, hit.category))
             d.matched += 1
+            d.matched_findings.append(f)
         elif (f.line_start, f.category) in matched:
             d.duplicates.append(f)
         else:

@@ -52,3 +52,9 @@ def test_the_real_dataset_is_well_formed():
         for e in c.expected:
             assert e.category in CATEGORIES and 1 <= e.line <= n, c.id
             assert c.source.splitlines()[e.line - 1].strip(), f"{c.id}: expected line {e.line} is blank"
+
+
+def test_cli_accepts_a_model_override_so_old_recordings_can_be_replayed_without_editing_env():
+    from app.eval.run import parse_args
+    assert parse_args(["--model", "awm-coder"]).model == "awm-coder"
+    assert parse_args([]).model is None

@@ -101,3 +101,29 @@ def test_gated_and_ungated_configs_show_what_the_gate_changes(tmp_path):
     assert summaries["rules+llm-ungated"].false_alarm_cases == 1 and summaries["rules+llm-ungated"].held_back == 0
     assert summaries["rules+llm"].false_alarm_cases == 0 and summaries["rules+llm"].held_back == 2  # eval(...) and shell=True
     assert summaries["rules+llm"].tp == 0  # the price: the AI said nothing about the real bug, so it was held back too
+
+
+# ---------------- confidence marks and the --model override ----------------
+def test_evaluate_records_the_confidence_of_right_and_wrong_comments():
+    (bad,) = run(evaluate([BAD], lambda: [RulesStage()]))
+    (noisy,) = run(evaluate([COMMENT], lambda: [RulesStage()]))
+    assert bad.marks == [(0.65, True)]      # shell=True on the labeled line
+    assert noisy.marks == [(0.6, False)]    # eval( inside a comment on a clean file
+
+
+def test_the_model_flag_selects_which_recordings_are_replayed(tmp_path):
+    from app.eval.run import main_async, parse_args
+
+    cases, cache, out = tmp_path / "cases", tmp_path / "cache", tmp_path / "out"
+    cases.mkdir()
+    (cases / "bad.py").write_text("import subprocess\nsubprocess.run(cmd, shell=True)  # EXPECT: security\n")
+    rec = CachingProvider(FakeProvider([llm_reply(2)], model="m-recorded"), cache, mode="record")
+    run(run_configs([BAD], ["llm"], rec))
+
+    args = parse_args(["--config", "llm", "--mode", "replay", "--model", "m-recorded",
+                       "--cases", str(cases), "--cache", str(cache), "--out", str(out)])
+    run(main_async(args))
+
+    (saved,) = list(out.glob("*.json"))
+    data = json.loads(saved.read_text())
+    assert data["model"] == "m-recorded" and data["summaries"]["llm"]["tp"] == 1
