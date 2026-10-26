@@ -35,3 +35,9 @@ def test_summary_lists_files_that_were_only_partly_reviewed():
     body = build_review_payload(c, [], [], checks=("rules", "llm-security"))["body"]
     assert "Only partly reviewed: 1 file(s)" in body and "`big.py`: AI security review skipped" in body
     assert "AI security review" in body.split("Checks run:")[1].splitlines()[0]
+
+
+def test_summary_tells_the_author_when_matches_were_held_back():
+    body = build_review_payload(ctx(), [], [], held_back=2)["body"]
+    assert "I held back 2 pattern match(es) that the AI review did not confirm." in body
+    assert "held back" not in build_review_payload(ctx(), [], [])["body"]

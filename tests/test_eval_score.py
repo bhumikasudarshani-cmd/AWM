@@ -35,8 +35,8 @@ def test_any_comment_on_a_clean_case_is_a_false_positive():
     assert (s.tp, s.fp, s.fn) == (0, 1, 0)
 
 
-def result(case_id, clean, score, error=None, ms=100, pt=10, ct=5):
-    return CaseResult(case_id, clean, score, error, ms, pt, ct)
+def result(case_id, clean, score, error=None, ms=100, pt=10, ct=5, held=0):
+    return CaseResult(case_id, clean, score, error, ms, pt, ct, held_back=held)
 
 
 def test_summary_metrics_and_false_alarms():
@@ -52,6 +52,7 @@ def test_summary_metrics_and_false_alarms():
     assert s.f1 == pytest.approx(2 * 0.6 * 0.75 / (0.6 + 0.75))
     assert s.comments_per_case == pytest.approx(6 / 4) and s.duplicates == 1
     assert (s.prompt_tokens, s.completion_tokens, s.duration_ms) == (40, 20, 400)
+    assert summarize([result("a", False, CaseScore(1, 0, 0, 0, 1), held=3), result("b", True, CaseScore(0, 0, 0, 0, 0), held=2)]).held_back == 5
 
 
 def test_metrics_are_none_when_undefined_and_render_as_dash():

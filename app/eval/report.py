@@ -15,6 +15,7 @@ class CaseResult:
     prompt_tokens: int
     completion_tokens: int
     details: list[str] = field(default_factory=list)
+    held_back: int = 0
 
 
 @dataclass(slots=True)
@@ -23,6 +24,7 @@ class Summary:
     clean_cases: int
     false_alarm_cases: int  # clean files that still got a comment
     errors: int
+    held_back: int
     tp: int
     fp: int
     fn: int
@@ -53,6 +55,7 @@ def summarize(results: list[CaseResult]) -> Summary:
         clean_cases=sum(1 for r in results if r.is_clean),
         false_alarm_cases=sum(1 for r in results if r.is_clean and r.score.comments > 0),
         errors=sum(1 for r in results if r.error),
+        held_back=sum(r.held_back for r in results),
         tp=tp, fp=fp, fn=fn, duplicates=sum(r.score.duplicates for r in results), comments=comments,
         precision=precision, recall=recall, f1=f1,
         comments_per_case=comments / len(results) if results else 0.0,
@@ -68,12 +71,12 @@ def _fmt(value: float | None) -> str:
 
 def to_markdown(summaries: dict[str, Summary]) -> str:
     head = ("| Config | Precision | Recall | F1 | Comments/case | Duplicates | False alarms (clean files) "
-            "| Errors | Time (s) | Tokens in/out |")
-    lines = [head, "|" + "---|" * 10]
+            "| Held back | Errors | Time (s) | Tokens in/out |")
+    lines = [head, "|" + "---|" * 11]
     for name, s in summaries.items():
         lines.append(
             f"| {name} | {_fmt(s.precision)} | {_fmt(s.recall)} | {_fmt(s.f1)} | {s.comments_per_case:.2f} "
-            f"| {s.duplicates} | {s.false_alarm_cases}/{s.clean_cases} | {s.errors} "
+            f"| {s.duplicates} | {s.false_alarm_cases}/{s.clean_cases} | {s.held_back} | {s.errors} "
             f"| {s.duration_ms / 1000:.1f} | {s.prompt_tokens}/{s.completion_tokens} |"
         )
     return "\n".join(lines)

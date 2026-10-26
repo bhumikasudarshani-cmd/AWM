@@ -12,7 +12,7 @@ from app.pipeline.models import ReviewConfig
 from app.pipeline.runner import run_pipeline, select_findings
 from app.pipeline.stages.rules import RulesStage
 
-CONFIG_NAMES = ("rules", "llm", "rules+llm")
+CONFIG_NAMES = ("rules", "llm", "rules+llm-ungated", "rules+llm")
 
 
 async def evaluate(
@@ -43,7 +43,7 @@ async def evaluate(
             error="; ".join(errors) or None, duration_ms=int((time.perf_counter() - started) * 1000),
             prompt_tokens=(provider.usage.prompt_tokens - pt0) if provider else 0,
             completion_tokens=(provider.usage.completion_tokens - ct0) if provider else 0,
-            details=details,
+            details=details, held_back=len(piped.suppressed),
         ))
     return results
 
@@ -67,22 +67,21 @@ def make_stage_factory(name: str, provider: CachingProvider | None, **llm_kwargs
     return factory
 
 
-async def run_configs(
-    cases: list[Case], names: list[str], provider: CachingProvider | None, **llm_kwargs
-) -> dict[str, Summary]:
-    out: dict[str, Summary] = {}
-    for name in names:
-        results = await evaluate(cases, make_stage_factory(name, provider, **llm_kwargs), provider=provider)
-        out[name] = summarize(results)
-    return out
-
-
 async def run_configs_detailed(
     cases: list[Case], names: list[str], provider: CachingProvider | None, **llm_kwargs
 ) -> tuple[dict[str, Summary], dict[str, list[CaseResult]]]:
     summaries: dict[str, Summary] = {}
     results: dict[str, list[CaseResult]] = {}
     for name in names:
-        results[name] = await evaluate(cases, make_stage_factory(name, provider, **llm_kwargs), provider=provider)
+        cfg = ReviewConfig(require_corroboration=False) if name.endswith("-ungated") else None
+        factory = make_stage_factory(name, provider, **llm_kwargs)
+        results[name] = await evaluate(cases, factory, cfg=cfg, provider=provider)
         summaries[name] = summarize(results[name])
     return summaries, results
+
+
+async def run_configs(
+    cases: list[Case], names: list[str], provider: CachingProvider | None, **llm_kwargs
+) -> dict[str, Summary]:
+    summaries, _ = await run_configs_detailed(cases, names, provider, **llm_kwargs)
+    return summaries

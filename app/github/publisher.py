@@ -9,7 +9,7 @@ from app.pipeline.models import SEVERITY_ORDER, Finding, ReviewContext
 
 MAX_BODY = 60000
 BOT_NAME = "AWM"
-STAGE_LABELS = {"rules": "security and debugging rules", "llm-security": "AI security review"}
+STAGE_LABELS = {"rules": "security and debugging rules", "llm-security": "AI security review"}  # friendly names for the "checks run" line
 SEVERITY_LABEL = {"low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"}
 
 
@@ -46,6 +46,7 @@ def render_comment(f: Finding) -> str:
 
 
 def _greeting(author: str) -> str:
+    # @-mention people so they get notified; skip bots (for example dependabot[bot])
     if author and not author.endswith("[bot]"):
         return f"Hi @{author}, I'm **{BOT_NAME}**."
     return f"Hi, I'm **{BOT_NAME}**."
@@ -57,6 +58,7 @@ def render_summary(
     outside: list[Finding],
     overflow_count: int,
     checks: tuple[str, ...] = (),
+    held_back: int = 0,
 ) -> str:
     all_findings = [p.finding for p in placed] + outside
     reviewed, skipped = len(ctx.coverage.reviewed), ctx.coverage.skipped
@@ -67,11 +69,7 @@ def render_summary(
         f"I looked at your changes in `{ctx.head_sha[:7]}`: **{reviewed}** file(s), **{changed}** changed line(s).",
         "",
     ]
-    partial = ctx.coverage.partial
-    if partial:
-        lines += ["", f"<details><summary>Only partly reviewed: {len(partial)} file(s)</summary>", ""]
-        lines += [f"- `{s.path}`: {s.reason}" for s in partial[:15]]
-        lines += ["", "</details>"]
+
     if all_findings:
         counts = {s: sum(1 for f in all_findings if f.severity == s) for s in SEVERITY_ORDER}
         breakdown = ", ".join(f"{counts[s]} {s}" for s in ("critical", "high", "medium", "low") if counts[s])
@@ -93,6 +91,15 @@ def render_summary(
             lines.append(f"- ... and {len(skipped) - 15} more")
         lines += ["", "</details>"]
 
+    if held_back:
+        lines += ["", f"I held back {held_back} pattern match(es) that the AI review did not confirm."]
+
+    partial = ctx.coverage.partial
+    if partial:
+        lines += ["", f"<details><summary>Only partly reviewed: {len(partial)} file(s)</summary>", ""]
+        lines += [f"- `{s.path}`: {s.reason}" for s in partial[:15]]
+        lines += ["", "</details>"]
+
     if checks:
         labels = ", ".join(STAGE_LABELS.get(c, c) for c in checks)
         lines += ["", f"<sub>Checks run: {labels}</sub>"]
@@ -105,8 +112,12 @@ def render_summary(
 
 
 def build_review_payload(
-    ctx: ReviewContext, placed: list[PlacedFinding], outside: list[Finding], overflow_count: int = 0,
+    ctx: ReviewContext,
+    placed: list[PlacedFinding],
+    outside: list[Finding],
+    overflow_count: int = 0,
     checks: tuple[str, ...] = (),
+    held_back: int = 0,
 ) -> dict[str, Any]:
     comments: list[dict[str, Any]] = []
     for p in placed:
@@ -123,6 +134,6 @@ def build_review_payload(
     return {
         "commit_id": ctx.head_sha,
         "event": "COMMENT",
-        "body": render_summary(ctx, placed, outside, overflow_count, checks),
+        "body": render_summary(ctx, placed, outside, overflow_count, checks, held_back),
         "comments": comments,
     }

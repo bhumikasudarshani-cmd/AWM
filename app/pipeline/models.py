@@ -60,6 +60,8 @@ class ReviewConfig:
     ignore_paths: tuple[str, ...] = ()
     limits: Limits = field(default_factory=Limits)
     post_when_clean: bool = True
+    require_corroboration: bool = True  # hold back weak rule matches the AI review did not confirm
+    corroboration_exempt_confidence: float = 0.9  # rule matches this sure are always shown
 
 
 @dataclass(slots=True)

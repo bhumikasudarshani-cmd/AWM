@@ -23,6 +23,7 @@ class PipelineResult:
     findings: list[Finding]
     stage_results: list[StageResult]
     dropped_unknown_file: int = 0
+    suppressed: list[Finding] = field(default_factory=list)  # held back: weak rule match, AI did not confirm
 
 
 @dataclass(slots=True)
@@ -79,16 +80,35 @@ async def run_pipeline(ctx: ReviewContext, stages: list[Stage], stage_timeout: f
     results = await asyncio.gather(*(_run_stage(s, ctx, stage_timeout) for s in stages))
 
     known = ctx.files_by_path()
+
+    # Stages that cover a category (the AI security review covers "security") can confirm or reject
+    # what the cheaper stages found there. Only stages that ran without error count.
+    covering = [(s, r) for s, r in zip(stages, results) if getattr(s, "covers", None) and r.error is None]
+    covered = set().union(*(s.covers for s, _ in covering)) if covering else set()
+    confirmed = {(f.file, f.line_start, f.category) for _, r in covering for f in r.findings}
+    not_fully_checked = {p.path for p in ctx.coverage.partial}
+    gate = ctx.config.require_corroboration and bool(covered)
+
     candidates: list[Finding] = []
+    suppressed: list[Finding] = []
     dropped = 0
-    for res in results:
+    for stage, res in zip(stages, results):
         for f in res.findings:
             if f.file not in known:  # guards against invented file names
                 dropped += 1
                 continue
+            if (
+                gate
+                and f.category in covered
+                and f.file not in not_fully_checked
+                and f.confidence < ctx.config.corroboration_exempt_confidence
+                and (f.file, f.line_start, f.category) not in confirmed
+            ):
+                suppressed.append(f)
+                continue
             candidates.append(f)
     best = merge_findings(candidates)
-    return PipelineResult(sorted(best, key=_sort_key), list(results), dropped)
+    return PipelineResult(sorted(best, key=_sort_key), list(results), dropped, suppressed)
 
 
 def select_findings(findings: list[Finding], cfg: ReviewConfig) -> Selection:

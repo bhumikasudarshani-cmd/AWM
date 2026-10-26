@@ -31,6 +31,7 @@ def build_user_prompt(batch: list[FileDiff]) -> str:
 
 class LLMSecurityStage:
     name = "llm-security"
+    covers = frozenset({"security"})  # categories this stage can confirm or reject
 
     def __init__(
         self,
@@ -71,6 +72,8 @@ class LLMSecurityStage:
             except LLMError as exc:
                 failures, last_error = failures + 1, exc
                 log.warning("llm_batch_failed", stage=self.name, files=len(batch), error=str(exc)[:200])
+                for fd in batch:  # these files were not (fully) checked, so nothing may be held back for them
+                    ctx.coverage.partial.append(SkippedFile(fd.path, "AI security review failed for this file"))
                 continue
             log.info(
                 "llm_call", stage=self.name, model=self._provider.model, files=len(batch),

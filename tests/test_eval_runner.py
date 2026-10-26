@@ -92,3 +92,12 @@ def test_details_mark_duplicates_and_noisy_clean_files():
 def test_nothing_to_report_when_every_case_is_perfect():
     results = {"rules": run(evaluate([BAD, CLEAN], lambda: [RulesStage()]))}
     assert format_details(results) == "All cases perfect."
+
+
+# ---------------- the gate in the evaluation ----------------
+def test_gated_and_ungated_configs_show_what_the_gate_changes(tmp_path):
+    ai_says_nothing = CachingProvider(FakeProvider(['{"findings": []}'], model="fake"), tmp_path, mode="record")
+    summaries = run(run_configs([COMMENT, BAD], ["rules+llm-ungated", "rules+llm"], ai_says_nothing))
+    assert summaries["rules+llm-ungated"].false_alarm_cases == 1 and summaries["rules+llm-ungated"].held_back == 0
+    assert summaries["rules+llm"].false_alarm_cases == 0 and summaries["rules+llm"].held_back == 2  # eval(...) and shell=True
+    assert summaries["rules+llm"].tp == 0  # the price: the AI said nothing about the real bug, so it was held back too

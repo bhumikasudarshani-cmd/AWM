@@ -73,7 +73,8 @@ async def review_pull_request(ctx, job: dict):
             return {"status": "clean_not_posted"}
 
         payload = build_review_payload(
-            rctx, placed, outside, len(selection.overflow), checks=tuple(st.name for st in stages)
+            rctx, placed, outside, len(selection.overflow), checks=tuple(st.name for st in stages),
+            held_back=len(result.suppressed),
         )
         await gh.create_review(repo, number, payload)
 
@@ -84,7 +85,7 @@ async def review_pull_request(ctx, job: dict):
     log.info(
         "review_posted", repo=repo, pr=number, files_reviewed=len(reviewed),
         files_skipped=len(coverage.skipped), inline=len(placed), outside=len(outside),
-        below_threshold=selection.below_threshold, stage_errors=[r.stage for r in result.stage_results if r.error],
+        below_threshold=selection.below_threshold, held_back=len(result.suppressed), stage_errors=[r.stage for r in result.stage_results if r.error],
     )
     return {"status": "posted", "inline": len(placed), "outside": len(outside)}
 
