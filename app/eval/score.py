@@ -30,8 +30,9 @@ LENIENT_TOLERANCE = 1  # lenient scoring accepts a comment up to this many lines
 def diagnose_case(expected: list[Expected], findings: list[Finding], tolerance: int = 0) -> Diagnosis:
     """Match comments to expected issues one to one. tolerance=0 is strict (same line); tolerance=1 also accepts
     a comment one line above or below. The closest pairs are matched first, so an exact comment always beats a
-    near one, whatever order the comments arrive in. A comment that matches nothing but sits within tolerance of an
-    issue that was already matched is a duplicate, not a false positive."""
+    near one, whatever order the comments arrive in. A comment that matches nothing is a duplicate only if it sits on
+    the very line of an already matched issue (same category); a neighbouring line may be a different issue, so
+    that is a false positive, even in lenient mode."""
     pairs = sorted(
         (abs(f.line_start - e.line), fi, ei)
         for fi, f in enumerate(findings)
@@ -50,7 +51,7 @@ def diagnose_case(expected: list[Expected], findings: list[Finding], tolerance: 
     for fi, f in enumerate(findings):
         if fi in used_f:
             d.matched_findings.append(f)
-        elif any(m.category == f.category and abs(f.line_start - m.line) <= tolerance for m in matched):
+        elif any(m.category == f.category and f.line_start == m.line for m in matched):
             d.duplicates.append(f)
         else:
             d.unexpected.append(f)
