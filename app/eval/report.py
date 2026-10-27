@@ -17,6 +17,7 @@ class CaseResult:
     details: list[str] = field(default_factory=list)
     held_back: int = 0
     marks: list[tuple[float, bool]] = field(default_factory=list)  # (confidence, was it correct)
+    lenient: CaseScore | None = None  # same comments scored with +-1 line tolerance; strict `score` stays primary
 
 
 @dataclass(slots=True)
@@ -40,18 +41,33 @@ class Summary:
     completion_tokens: int
     mean_conf_correct: float | None = None
     mean_conf_wrong: float | None = None
+    lenient_tp: int | None = None
+    lenient_fp: int | None = None
+    lenient_fn: int | None = None
+    lenient_precision: float | None = None
+    lenient_recall: float | None = None
+    lenient_f1: float | None = None
 
 
 def _ratio(num: int, den: int) -> float | None:
     return num / den if den else None
 
 
+def _prf(tp: int, fp: int, fn: int) -> tuple[float | None, float | None, float | None]:
+    precision, recall = _ratio(tp, tp + fp), _ratio(tp, tp + fn)
+    f1 = 2 * precision * recall / (precision + recall) if precision and recall else (0.0 if precision is not None and recall is not None else None)
+    return precision, recall, f1
+
+
 def summarize(results: list[CaseResult]) -> Summary:
     tp = sum(r.score.tp for r in results)
     fp = sum(r.score.fp for r in results)
     fn = sum(r.score.fn for r in results)
-    precision, recall = _ratio(tp, tp + fp), _ratio(tp, tp + fn)
-    f1 = 2 * precision * recall / (precision + recall) if precision and recall else (0.0 if precision is not None and recall is not None else None)
+    precision, recall, f1 = _prf(tp, fp, fn)
+    lenient = [r.lenient for r in results]
+    has_lenient = bool(results) and all(x is not None for x in lenient)
+    ltp, lfp, lfn = (sum(x.tp for x in lenient), sum(x.fp for x in lenient), sum(x.fn for x in lenient)) if has_lenient else (None, None, None)
+    lp, lr, lf1 = _prf(ltp, lfp, lfn) if has_lenient else (None, None, None)
     comments = sum(r.score.comments for r in results)
     right = [c for r in results for c, ok in r.marks if ok]
     wrong = [c for r in results for c, ok in r.marks if not ok]
@@ -69,6 +85,7 @@ def summarize(results: list[CaseResult]) -> Summary:
         completion_tokens=sum(r.completion_tokens for r in results),
         mean_conf_correct=sum(right) / len(right) if right else None,
         mean_conf_wrong=sum(wrong) / len(wrong) if wrong else None,
+        lenient_tp=ltp, lenient_fp=lfp, lenient_fn=lfn, lenient_precision=lp, lenient_recall=lr, lenient_f1=lf1,
     )
 
 
@@ -77,12 +94,13 @@ def _fmt(value: float | None) -> str:
 
 
 def to_markdown(summaries: dict[str, Summary]) -> str:
-    head = ("| Config | Precision | Recall | F1 | Comments/case | Duplicates | False alarms (clean files) "
-            "| Held back | Errors | Time (s) | Tokens in/out |")
-    lines = [head, "|" + "---|" * 11]
+    head = ("| Config | Precision | Recall | F1 | Lenient P | Lenient R | Lenient F1 | Comments/case | Duplicates "
+            "| False alarms (clean files) | Held back | Errors | Time (s) | Tokens in/out |")
+    lines = [head, "|" + "---|" * 14]
     for name, s in summaries.items():
         lines.append(
-            f"| {name} | {_fmt(s.precision)} | {_fmt(s.recall)} | {_fmt(s.f1)} | {s.comments_per_case:.2f} "
+            f"| {name} | {_fmt(s.precision)} | {_fmt(s.recall)} | {_fmt(s.f1)} "
+            f"| {_fmt(s.lenient_precision)} | {_fmt(s.lenient_recall)} | {_fmt(s.lenient_f1)} | {s.comments_per_case:.2f} "
             f"| {s.duplicates} | {s.false_alarm_cases}/{s.clean_cases} | {s.held_back} | {s.errors} "
             f"| {s.duration_ms / 1000:.1f} | {s.prompt_tokens}/{s.completion_tokens} |"
         )

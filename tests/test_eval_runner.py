@@ -127,3 +127,10 @@ def test_the_model_flag_selects_which_recordings_are_replayed(tmp_path):
     (saved,) = list(out.glob("*.json"))
     data = json.loads(saved.read_text())
     assert data["model"] == "m-recorded" and data["summaries"]["llm"]["tp"] == 1
+def test_evaluate_scores_the_same_comments_strictly_and_leniently(tmp_path):
+    provider = CachingProvider(FakeProvider([llm_reply(1)], model="fake"), tmp_path, mode="record")  # one line above the label
+    summaries, results = run(run_configs_detailed([BAD, CLEAN], ["llm"], provider))
+    bad = {r.case_id: r for r in results["llm"]}["bad"]
+    assert (bad.score.tp, bad.score.fp, bad.score.fn) == (0, 1, 1)
+    assert (bad.lenient.tp, bad.lenient.fp, bad.lenient.fn) == (1, 0, 0)
+    assert summaries["llm"].f1 == 0.0 and summaries["llm"].lenient_f1 == 1.0

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from app.eval.cases import Case, case_context
 from app.eval.provider import CachingProvider
 from app.eval.report import CaseResult, Summary, summarize
-from app.eval.score import diagnose_case, score_case
+from app.eval.score import LENIENT_TOLERANCE, diagnose_case, score_case
 from app.pipeline.base import Stage
 from app.pipeline.models import ReviewConfig
 from app.pipeline.runner import run_pipeline, select_findings
@@ -41,6 +41,7 @@ async def evaluate(
         )
         results.append(CaseResult(
             case_id=case.id, is_clean=case.is_clean, score=score_case(case.expected, selected),
+            lenient=score_case(case.expected, selected, tolerance=LENIENT_TOLERANCE),
             error="; ".join(errors) or None, duration_ms=int((time.perf_counter() - started) * 1000),
             prompt_tokens=(provider.usage.prompt_tokens - pt0) if provider else 0,
             completion_tokens=(provider.usage.completion_tokens - ct0) if provider else 0,

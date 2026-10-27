@@ -116,3 +116,94 @@ def test_summary_reports_average_confidence_of_correct_and_wrong_comments():
     s = summarize([marked("a", [(0.9, True), (0.8, True), (0.6, False)], tp=2, fn=0)])
     assert s.mean_conf_correct == pytest.approx(0.85) and s.mean_conf_wrong == pytest.approx(0.6)
     assert summarize([marked("b", [], tp=0, fn=0)]).mean_conf_correct is None
+
+
+# ---------------- lenient scoring: a comment within +-1 line of the label still counts ----------------
+from app.eval.score import LENIENT_TOLERANCE  # noqa: E402
+
+
+def test_off_by_one_is_wrong_in_strict_and_right_in_lenient():
+    expected, found = [Expected(6, "security")], [f(5)]
+    strict, lenient = score_case(expected, found), score_case(expected, found, tolerance=1)
+    assert (strict.tp, strict.fp, strict.fn) == (0, 1, 1)
+    assert (lenient.tp, lenient.fp, lenient.fn) == (1, 0, 0)
+
+
+def test_the_comment_below_the_label_counts_too():
+    s = score_case([Expected(6, "security")], [f(7)], tolerance=1)
+    assert (s.tp, s.fp, s.fn) == (1, 0, 0)
+
+
+def test_off_by_two_is_wrong_even_in_lenient():
+    s = score_case([Expected(6, "security")], [f(4)], tolerance=1)
+    assert (s.tp, s.fp, s.fn) == (0, 1, 1)
+
+
+def test_lenient_still_needs_the_same_category():
+    s = score_case([Expected(6, "security")], [f(5, "bug")], tolerance=1)
+    assert (s.tp, s.fp, s.fn) == (0, 1, 1)
+
+
+def test_one_label_cannot_be_matched_by_two_comments():
+    # 5 and 7 are both within 1 of label 6; only one may match. The other is on a different line, so it is a
+    # false positive: being near a matched issue does not make a comment a duplicate of it.
+    s = score_case([Expected(6, "security")], [f(5, title="A"), f(7, title="B")], tolerance=1)
+    assert (s.tp, s.fp, s.fn, s.duplicates, s.comments) == (1, 1, 0, 0, 2)
+
+
+def test_a_second_comment_on_the_same_line_is_still_a_duplicate_in_lenient():
+    s = score_case([Expected(6, "security")], [f(6, title="A"), f(6, title="B")], tolerance=1)
+    assert (s.tp, s.fp, s.fn, s.duplicates) == (1, 0, 0, 1)
+
+
+def test_a_wrong_category_comment_next_to_a_matched_issue_is_a_false_positive_not_a_duplicate():
+    # real case v12: breakpoint() on line 6 (maintainability), SSRF on line 7 (security).
+    # The model said "security" on both lines. The line 6 comment is about another issue.
+    s = score_case([Expected(6, "maintainability"), Expected(7, "security")], [f(7), f(6, "security")], tolerance=1)
+    assert (s.tp, s.fp, s.fn, s.duplicates) == (1, 1, 1, 0)
+
+
+def test_exact_comment_wins_over_a_nearer_in_order_but_off_by_one_comment():
+    d = diagnose_case([Expected(6, "security")], [f(5, title="near"), f(6, title="exact")], tolerance=1)
+    assert [x.title for x in d.matched_findings] == ["exact"]
+    assert [x.title for x in d.unexpected] == ["near"] and d.duplicates == []
+
+
+def test_a_comment_between_two_labels_takes_only_one_of_them():
+    s = score_case([Expected(5, "security"), Expected(7, "security")], [f(6)], tolerance=1)
+    assert (s.tp, s.fp, s.fn) == (1, 0, 1)
+
+
+def test_two_neighbouring_labels_are_each_matched_by_their_own_comment():
+    s = score_case([Expected(5, "security"), Expected(6, "security")], [f(6, title="A"), f(5, title="B")], tolerance=1)
+    assert (s.tp, s.fp, s.fn) == (2, 0, 0)
+
+
+def test_lenient_on_a_clean_case_is_still_a_false_positive():
+    s = score_case([], [f(1)], tolerance=1)
+    assert (s.tp, s.fp, s.fn) == (0, 1, 0)
+
+
+def test_default_tolerance_is_strict_and_the_lenient_constant_is_one():
+    assert score_case([Expected(6, "security")], [f(5)]) == score_case([Expected(6, "security")], [f(5)], tolerance=0)
+    assert LENIENT_TOLERANCE == 1
+
+
+def test_summary_carries_lenient_numbers_next_to_the_strict_ones():
+    r = CaseResult("a", False, CaseScore(0, 1, 1, 0, 1), None, 0, 0, 0, lenient=CaseScore(1, 0, 0, 0, 1))
+    s = summarize([r])
+    assert (s.tp, s.precision, s.recall) == (0, 0.0, 0.0)
+    assert (s.lenient_tp, s.lenient_fp, s.lenient_fn) == (1, 0, 0)
+    assert (s.lenient_precision, s.lenient_recall, s.lenient_f1) == (1.0, 1.0, 1.0)
+
+
+def test_lenient_columns_come_after_the_strict_ones_in_the_table():
+    r = CaseResult("a", False, CaseScore(0, 1, 1, 0, 1), None, 0, 0, 0, lenient=CaseScore(1, 0, 0, 0, 1))
+    table = to_markdown({"rules": summarize([r])})
+    head = table.splitlines()[0]
+    assert head.index("F1") < head.index("Lenient P") < head.index("Lenient R") < head.index("Lenient F1")
+    assert len(table.splitlines()[1].strip("|").split("|")) == len(head.strip("|").split("|"))
+
+
+def test_without_lenient_scores_the_lenient_metrics_are_none():
+    assert summarize([result("a", False, CaseScore(1, 0, 0, 0, 1))]).lenient_f1 is None
