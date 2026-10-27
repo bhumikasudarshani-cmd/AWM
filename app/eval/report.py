@@ -52,10 +52,12 @@ class Summary:
 def _ratio(num: int, den: int) -> float | None:
     return num / den if den else None
 
+
 def _prf(tp: int, fp: int, fn: int) -> tuple[float | None, float | None, float | None]:
     precision, recall = _ratio(tp, tp + fp), _ratio(tp, tp + fn)
     f1 = 2 * precision * recall / (precision + recall) if precision and recall else (0.0 if precision is not None and recall is not None else None)
     return precision, recall, f1
+
 
 def summarize(results: list[CaseResult]) -> Summary:
     tp = sum(r.score.tp for r in results)
@@ -82,7 +84,8 @@ def summarize(results: list[CaseResult]) -> Summary:
         prompt_tokens=sum(r.prompt_tokens for r in results),
         completion_tokens=sum(r.completion_tokens for r in results),
         mean_conf_correct=sum(right) / len(right) if right else None,
-                  lenient_tp=ltp, lenient_fp=lfp, lenient_fn=lfn, lenient_precision=lp, lenient_recall=lr, lenient_f1=lf1,
+        mean_conf_wrong=sum(wrong) / len(wrong) if wrong else None,
+        lenient_tp=ltp, lenient_fp=lfp, lenient_fn=lfn, lenient_precision=lp, lenient_recall=lr, lenient_f1=lf1,
     )
 
 
@@ -101,6 +104,7 @@ def to_markdown(summaries: dict[str, Summary]) -> str:
             f"| {s.duplicates} | {s.false_alarm_cases}/{s.clean_cases} | {s.held_back} | {s.errors} "
             f"| {s.duration_ms / 1000:.1f} | {s.prompt_tokens}/{s.completion_tokens} |"
         )
+    return "\n".join(lines)
 
 
 def format_details(results_by_config: dict[str, list[CaseResult]]) -> str:
