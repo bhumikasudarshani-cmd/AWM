@@ -151,3 +151,29 @@ def sanitize_text(text: str, max_len: int) -> str:
         truncated = True
         cut = max(0, cut - max(1, over // 4)) if attempt < 30 else cut // 2
     return ""
+
+
+def _wrap_code(body: str) -> str:
+    """Put body in a code span that its own content cannot close: the fence is longer than any backtick run inside."""
+    if not body:
+        return ""
+    fence = "`" * (max((len(run) for run in re.findall("`+", body)), default=0) + 1)
+    pad = " " if body.startswith("`") or body.endswith("`") else ""  # CommonMark strips one space on each side
+    return f"{fence}{pad}{body}{pad}{fence}"
+
+
+def inline_code(text: str, max_len: int = 200) -> str:
+    """Render text, for example a file name, as one inline code span on one line, at most max_len characters long.
+
+    File names come from the pull request, so they can contain backticks, newlines and a copy of our marker."""
+    text = " ".join(_HIDDEN.sub("", text).split()).replace("<!--", "&lt;!--")
+    cut, truncated = len(text), False
+    while True:
+        wrapped = _wrap_code(text[:cut] + (ELLIPSIS if truncated else ""))
+        over = len(wrapped) - max_len
+        if over <= 0:
+            return wrapped
+        if cut <= 0:
+            return ""
+        truncated = True
+        cut = max(0, cut - max(1, over))

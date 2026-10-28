@@ -275,3 +275,52 @@ def test_without_code_nothing_dangerous_survives():
         assert "![" not in out, (text, out)
         assert not re.search(r"<[A-Za-z/!?]", out), (text, out)
         assert "\u200b" not in out, (text, out)
+
+
+# ---------------- inline_code: a file name (or other short text) as one code span nobody can break out of ----------------
+from app.sanitize import inline_code  # noqa: E402
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("app/main.py", "`app/main.py`"),
+    ("a`b.py", "``a`b.py``"),
+    ("a``b``c", "```a``b``c```"),
+    ("`a`", "`` `a` ``"),
+    ("`", "`` ` ``"),
+    ("two  words\tand\nlines", "`two words and lines`"),
+    ("x<!--y", "`x&lt;!--y`"),
+    ("a\u202eb\u200bc", "`abc`"),
+])
+def test_inline_code_wraps_text_in_a_code_span(text, expected):
+    assert inline_code(text) == expected
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\n\t ", "\u200b"])
+def test_inline_code_of_nothing_is_nothing(text):
+    assert inline_code(text) == ""
+
+
+def test_inline_code_is_cut_to_the_limit():
+    out = inline_code("verylongname" * 30, 40)
+    assert len(out) <= 40 and out.startswith("`") and out.endswith("\u2026`")
+
+
+@pytest.mark.parametrize("limit", [0, 1, 2])
+def test_inline_code_gives_nothing_when_it_cannot_fit(limit):
+    assert inline_code("abc", limit) == ""
+
+
+def test_text_after_an_inline_code_span_is_still_cleaned():
+    # if the span were broken, the @ inside would be changed or the one after it would be left alone
+    for text in ("a`b", "``", "`", "```x``y```", "x`\n@bob`", "@bob `", "<b>`"):
+        code = inline_code(text, 80)
+        assert sanitize_text(f"x {code} @zed y", BIG) == f"x {code} {AT}zed y", (text, code)
+
+
+def test_inline_code_never_breaks_out_for_random_input():
+    for text in fuzz_texts(3000, seed=4):
+        for limit in (200, 30, 9):
+            code = inline_code(text, limit)
+            assert len(code) <= limit, (text, limit, code)
+            if code:
+                assert sanitize_text(f"x {code} @zed y", BIG) == f"x {code} {AT}zed y", (text, limit, code)

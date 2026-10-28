@@ -112,17 +112,17 @@ def test_retries_transient_errors(monkeypatch):
 
     assert asyncio.run(go()) == {"ok": True} and calls["n"] == 3
 
-    def test_summary_greets_the_author_and_names_the_bot():
+def test_summary_greets_the_author_and_names_the_bot():
+    ctx = ctx_with()
+    ctx.author = "bhumi"
+    body = build_review_payload(ctx, [], [], checks=("rules",))["body"]
+    assert "Hi @bhumi, I'm **AWM**." in body
+    assert "Checks run: security and debugging rules" in body
+
+
+def test_summary_does_not_mention_bots_or_empty_authors():
+    for author in ("dependabot[bot]", ""):
         ctx = ctx_with()
-        ctx.author = "bhumi"
-        body = build_review_payload(ctx, [], [], checks=("rules",))["body"]
-        assert "Hi @bhumi, I'm **AWM**." in body
-        assert "Checks run: security and debugging rules" in body
-
-
-    def test_summary_does_not_mention_bots_or_empty_authors():
-        for author in ("dependabot[bot]", ""):
-            ctx = ctx_with()
-            ctx.author = author
-            body = build_review_payload(ctx, [], [])["body"]
-            assert "Hi, I'm **AWM**." in body
+        ctx.author = author
+        body = build_review_payload(ctx, [], [])["body"]
+        assert "Hi, I'm **AWM**." in body

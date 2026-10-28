@@ -1,13 +1,21 @@
 """Build the single batched review we post to a pull request."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from app.diff.mapping import Location, resolve_location
 from app.pipeline.models import SEVERITY_ORDER, Finding, ReviewContext
+from app.sanitize import inline_code, sanitize_text
 
 MAX_BODY = 60000
+MAX_TITLE = 200
+MAX_EXPLANATION = 1500
+MAX_FIX = 1000
+MAX_REASON = 200
+MAX_PATH = 200
+_LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,38}")  # a GitHub login; "dependabot[bot]" and anything odd do not match
 BOT_NAME = "AWM"
 STAGE_LABELS = {"rules": "security and debugging rules", "llm-security": "AI security review"}  # friendly names for the "checks run" line
 SEVERITY_LABEL = {"low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"}
@@ -34,20 +42,27 @@ def place_findings(ctx: ReviewContext, findings: list[Finding]) -> tuple[list[Pl
     return placed, outside
 
 
+def _one_line(text: str, limit: int) -> str:
+    return sanitize_text(" ".join(text.split()), limit)
+
+
 def render_comment(f: Finding) -> str:
-    parts = [f"**{SEVERITY_LABEL[f.severity]} · {f.category}**: {f.title}"]
-    if f.explanation:
-        parts.append(f.explanation)
-    if f.suggested_fix:
-        parts.append(f"**Suggested fix:** {f.suggested_fix}")
+    # The model reads code an attacker may have written, so what it wrote back is untrusted: clean all of it.
+    parts = [f"**{SEVERITY_LABEL[f.severity]} · {f.category}**: {_one_line(f.title, MAX_TITLE)}"]
+    explanation = sanitize_text(f.explanation, MAX_EXPLANATION)
+    if explanation:
+        parts.append(explanation)
+    fix = sanitize_text(f.suggested_fix or "", MAX_FIX)
+    if fix:
+        parts.append(f"**Suggested fix:** {fix}")
     sources = ", ".join(f"{e.tool}:{e.rule}" if e.rule else e.tool for e in f.evidence) or f.source_stage
     parts.append(f"<sub>confidence {f.confidence:.2f} · {sources}</sub>")
     return "\n\n".join(parts)
 
 
 def _greeting(author: str) -> str:
-    # @-mention people so they get notified; skip bots (for example dependabot[bot])
-    if author and not author.endswith("[bot]"):
+    # @-mention people so they get notified; skip bots (for example dependabot[bot]) and anything that is not a login
+    if _LOGIN.fullmatch(author or ""):
         return f"Hi @{author}, I'm **{BOT_NAME}**."
     return f"Hi, I'm **{BOT_NAME}**."
 
@@ -80,13 +95,14 @@ def render_summary(
     if outside:
         lines += ["", "**Findings outside the changed lines:**"]
         for f in outside:
-            lines.append(f"- `{f.file}:{f.line_start}` **{f.title}**. {f.explanation}")
+            where = inline_code(f"{f.file}:{f.line_start}", MAX_PATH)
+            lines.append(f"- {where} **{_one_line(f.title, MAX_TITLE)}**. {_one_line(f.explanation, MAX_EXPLANATION)}")
     if overflow_count:
         lines += ["", f"{overflow_count} lower-priority finding(s) were left out to keep this review short."]
 
     if skipped:
         lines += ["", f"<details><summary>Not reviewed: {len(skipped)} file(s)</summary>", ""]
-        lines += [f"- `{s.path}`: {s.reason}" for s in skipped[:15]]
+        lines += [f"- {inline_code(s.path, MAX_PATH)}: {_one_line(s.reason, MAX_REASON)}" for s in skipped[:15]]
         if len(skipped) > 15:
             lines.append(f"- ... and {len(skipped) - 15} more")
         lines += ["", "</details>"]
@@ -97,7 +113,7 @@ def render_summary(
     partial = ctx.coverage.partial
     if partial:
         lines += ["", f"<details><summary>Only partly reviewed: {len(partial)} file(s)</summary>", ""]
-        lines += [f"- `{s.path}`: {s.reason}" for s in partial[:15]]
+        lines += [f"- {inline_code(s.path, MAX_PATH)}: {_one_line(s.reason, MAX_REASON)}" for s in partial[:15]]
         lines += ["", "</details>"]
 
     if checks:
