@@ -1,0 +1,21 @@
+{
+  "model": "awm-coder",
+  "configs": {
+    "rules": {
+      "precision": 0.714,
+      "recall": 0.384
+    },
+    "llm": {
+      "precision": 0.6,
+      "recall": 0.923
+    },
+    "rules+llm-ungated": {
+      "precision": 0.59,
+      "recall": 1.0
+    },
+    "rules+llm": {
+      "precision": 0.619,
+      "recall": 1.0
+    }
+  }
+}
