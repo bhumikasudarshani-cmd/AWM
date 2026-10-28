@@ -44,7 +44,10 @@ def test_record_mode_reuses_an_existing_recording(tmp_path):
 def test_cache_key_depends_on_model_prompt_and_json_mode(tmp_path):
     inner = FakeProvider(["x"], model="m1")
     rec = CachingProvider(inner, tmp_path, mode="record")
-    call(rec); call(rec, system="other"); call(rec, user="other"); call(rec, json_mode=False)
+    call(rec)
+    call(rec, system="other")
+    call(rec, user="other")
+    call(rec, json_mode=False)
     other_model = CachingProvider(FakeProvider(["x"], model="m2"), tmp_path, mode="record")
     call(other_model)
     assert len(list(tmp_path.glob("*.json"))) == 5
@@ -53,7 +56,8 @@ def test_cache_key_depends_on_model_prompt_and_json_mode(tmp_path):
 def test_usage_totals_include_cached_tokens_and_aclose_keeps_the_shared_provider_open(tmp_path):
     inner = FakeProvider(["x"], model="m")
     rec = CachingProvider(inner, tmp_path, mode="record")
-    call(rec, user="a" * 40); call(rec, user="a" * 40)
+    call(rec, user="a" * 40)
+    call(rec, user="a" * 40)
     assert rec.usage.calls == 1 and rec.usage.cached == 1
     assert rec.usage.prompt_tokens == 20 and rec.usage.completion_tokens == 20
     asyncio.run(rec.aclose())

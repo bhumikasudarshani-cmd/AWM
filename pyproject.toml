@@ -13,3 +13,6 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+# This file imports pytest fixtures from another test module, then takes them as test parameters.
+# Ruff reads that as a redefinition. The long-term fix is to move those fixtures into conftest.py.
+"tests/test_integration_llm_review.py" = ["F811"]
