@@ -1,5 +1,4 @@
 """Integration: webhook-to-review flow with the AI security stage switched on (fake model)."""
-import asyncio
 import json
 
 import pytest

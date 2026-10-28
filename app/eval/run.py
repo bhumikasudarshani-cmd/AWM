@@ -8,12 +8,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
 
 from app.config import settings
 from app.eval.cases import load_cases
+from app.eval.gate import GATE_MAX_INPUT_TOKENS, check_gate, load_baseline
 from app.eval.provider import CachingProvider
 from app.eval.report import format_details, format_sweep, to_markdown
 from app.eval.runner import CONFIG_NAMES, run_configs_detailed
@@ -31,7 +33,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--cases", default=str(HERE / "cases"))
     p.add_argument("--cache", default=str(HERE / "recorded"))
     p.add_argument("--out", default=str(HERE / "results"))
-    return p.parse_args(argv)
+    p.add_argument("--gate", action="store_true",
+                   help="CI mode: replay the recordings on the dev cases and exit 1 if precision or recall fell below the baseline")
+    p.add_argument("--baseline", default=str(HERE / "baseline.json"))
+    args = p.parse_args(argv)
+    if args.gate:
+        if args.mode != "replay" or args.config != "all":
+            p.error("--gate needs --mode replay and --config all")
+        if Path(args.cases).resolve() != (HERE / "cases").resolve():
+            p.error("--gate runs on the dev cases only; the held-out cases are run by hand, once per pipeline version")
+        if args.model:
+            p.error("--gate uses the model named in the baseline; do not pass --model")
+    return args
 
 
 async def main_async(args: argparse.Namespace) -> None:
@@ -39,7 +52,14 @@ async def main_async(args: argparse.Namespace) -> None:
     needs_model = any("llm" in n for n in names)
     provider = None
     inner = None
-    model_name = args.model or settings.llm_model
+    baseline = None
+    if args.gate:
+        try:
+            baseline = load_baseline(args.baseline)
+        except (OSError, ValueError) as e:
+            raise SystemExit(f"Gate: cannot read the baseline {args.baseline}: {e}") from e
+    model_name = baseline.model if baseline else (args.model or settings.llm_model)
+    max_input_tokens = GATE_MAX_INPUT_TOKENS if baseline else settings.llm_max_input_tokens
     if needs_model:
         if args.mode != "replay":
             from app.llm.openai_compat import OpenAICompatProvider
@@ -50,7 +70,7 @@ async def main_async(args: argparse.Namespace) -> None:
 
     cases = load_cases(args.cases)
     try:
-        summaries, results = await run_configs_detailed(cases, names, provider, max_input_tokens=settings.llm_max_input_tokens,
+        summaries, results = await run_configs_detailed(cases, names, provider, max_input_tokens=max_input_tokens,
                                       timeout=settings.llm_timeout)
     finally:
         if provider is not None:
@@ -76,6 +96,13 @@ async def main_async(args: argparse.Namespace) -> None:
         "summaries": {k: asdict(v) for k, v in summaries.items()},
     }, indent=2), encoding="utf-8")
     print(f"\nSaved {path}")
+
+    if baseline is not None:
+        problems = check_gate(summaries, baseline)
+        if problems:
+            print("\nGate: FAILED\n" + "\n".join(f"  - {m}" for m in problems))
+            sys.exit(1)
+        print("\nGate: ok")
 
 
 def main() -> None:

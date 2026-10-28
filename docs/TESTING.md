@@ -90,3 +90,17 @@ Real-model speed is measured separately (seconds per review on this laptop) and 
 ## Definition of done
 
 A feature is done when its unit tests, its integration test and its end-to-end check pass, and the documentation reflects what the code does.
+
+## Accuracy gate (CI)
+
+CI runs `python -m app.eval.run --gate` after the tests. It replays the recorded model answers in `app/eval/recorded/`
+on the dev cases (free, offline, no key) and exits with code 1 if precision or recall of any config is below the floor in
+`app/eval/baseline.json`, or if any case had an error.
+
+- Replay is deterministic, so the numbers only move when the code, the prompt or the cases change.
+- A change that lowers a number must lower the floor in the same pull request, so a reviewer sees it. Raise a floor when
+  a change improves it. Floors are rounded down to three decimals.
+- The recording key contains the prompt. Changing the prompt makes replay fail with "no recorded response": re-record
+  with a live model (`--mode record`) and commit the new recordings in the same pull request.
+- `--gate` refuses to run on the held-out cases, in record or live mode, or with `--model`.
+- The gate measures the strict score. The lenient column is informational.
